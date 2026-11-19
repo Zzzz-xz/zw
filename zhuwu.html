@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>禁忌图书馆 · 沉浸式解谜</title>
+<style>
+*{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html,body{
+  margin:0; padding:0; height:100%; overflow:hidden;
+  background:#04050a; color:#e6e2d6;
+  font-family:"Noto Serif SC","Songti SC","STSong","SimSun",serif;
+  user-select:none; -webkit-user-select:none;
+}
+
+/* ===== 场景 / 背景运镜 ===== */
+#scene{
+  position:fixed; inset:0; z-index:1;
+  transition: opacity .7s ease, transform .95s cubic-bezier(.4,0,.2,1), filter .9s ease;
+  will-change: opacity, transform;
+}
+#scene.out{ opacity:0; transform: scale(1.18) translateY(-1.5%); filter: blur(4px); }
+
+/* 背景层 */
+.bg-layer-item {
+  position: absolute; inset: -9%;
+  width: 118%; height: 118%;
+  object-fit: cover;
+  object-position: 50% 45%;
+  filter: brightness(.65) saturate(.9) contrast(1.05);
+  opacity: 0;
+  transition: opacity 1.6s ease, filter 1.4s ease;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+.bg-layer-item.active {
+  opacity: 1;
+  animation: kenburns 46s ease-in-out infinite alternate;
+}
+
+@keyframes kenburns{
+  0%   { transform: scale(1.04) translate3d(0,0,0); }
+  30%  { transform: scale(1.15) translate3d(-1.8%,-1.3%,0); }
+  65%  { transform: scale(1.10) translate3d(1.5%,1.1%,0); }
+  100% { transform: scale(1.21) translate3d(-1%,1.5%,0); }
+}
+
+#vignette{
+  position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0) 28%, rgba(0,0,0,.75) 100%),
+    linear-gradient(to bottom, rgba(4,6,12,.6), rgba(4,6,12,.85));
+  z-index: 2;
+}
+#fog{
+  position:absolute; inset:-20%; pointer-events:none; opacity:.16;
+  background:
+    radial-gradient(circle at 25% 60%, rgba(200,210,255,.35), transparent 45%),
+    radial-gradient(circle at 75% 35%, rgba(150,180,255,.28), transparent 50%);
+  animation: fogdrift 38s ease-in-out infinite alternate;
+  filter: blur(28px);
+  transition: opacity 1.2s ease;
+  z-index: 1;
+}
+@keyframes fogdrift{
+  0%{ transform: translate3d(-3%,0,0) scale(1); }
+  100%{ transform: translate3d(4%,-2%,0) scale(1.12); }
+}
+
+/* ===== 左上角场景名 ===== */
+#sceneName{
+  position:fixed; top:20px; left:24px; z-index:26;
+  padding:8px 22px;
+  font-size:15px; letter-spacing:3px; color:#e8d9a0;
+  background:linear-gradient(90deg, rgba(20,16,10,.9), rgba(8,7,13,.6));
+  border-left:3px solid rgba(201,162,39,.8);
+  border-radius:0 3px 3px 0;
+  text-shadow:0 0 14px rgba(0,0,0,.95);
+  box-shadow:0 0 30px rgba(0,0,0,.7);
+  pointer-events:none;
+  transition:opacity .5s ease;
+}
+
+/* ===== HUD ===== */
+#hud{
+  position:fixed; top:20px; right:24px; z-index:25;
+  text-align:right; letter-spacing:1px;
+  text-shadow:0 0 14px rgba(0,0,0,.95);
+}
+.hud-label{ font-size:13px; color:#c9b98a; margin-bottom:6px; letter-spacing:2px; }
+#hpBar{
+  width:220px; height:14px; border:1px solid rgba(201,162,39,.55);
+  background:rgba(0,0,0,.65); padding:2px; border-radius:2px;
+  box-shadow:0 0 18px rgba(0,0,0,.8) inset;
+}
+#hpFill{
+  height:100%; width:100%; border-radius:1px;
+  background:linear-gradient(90deg,#7f1d1d,#dc2626 55%,#f87171);
+  box-shadow:0 0 14px rgba(239,68,68,.75);
+  transition: width .55s cubic-bezier(.4,0,.2,1);
+}
+#floorLabel{ margin-top:10px; font-size:13px; color:#a99f83; }
+
+/* ===== NPC ===== */
+#npc{
+  position:fixed; left:1.5vw; bottom:0; height:78vh; z-index:5;
+  pointer-events:none; display:flex; align-items:flex-end;
+}
+#npcInner{
+  transform: translateY(115%) scale(.98);
+  opacity:0;
+  transition: transform 1.15s cubic-bezier(.16,1,.3,1), opacity .9s ease,
+              filter .4s ease;
+}
+#npc.enter #npcInner{ transform: translateY(0) scale(1); opacity:1; }
+#npcImg{
+  height:78vh; width:auto; display:block;
+  filter: drop-shadow(0 0 40px rgba(0,0,0,.95)) drop-shadow(0 0 18px rgba(120,150,255,.12));
+  animation: breathe 4.2s ease-in-out infinite;
+  transform-origin: 50% 100%;
+  transition: filter .3s ease, transform .3s ease;
+}
+@keyframes breathe{
+  0%,100% { transform: translateY(0) scale(1) rotate(0deg); }
+  50%     { transform: translateY(-11px) scale(1.014) rotate(-.35deg); }
+}
+#npcInner.happy{ transform: translateY(-8px) scale(1.02); }
+#npcInner.shake{
+  animation: npcShake .42s ease;
+  filter: brightness(.7) saturate(.8);
+}
+@keyframes npcShake{
+  0%,100%{ transform: translateX(0); }
+  20%{ transform: translateX(-9px); } 40%{ transform: translateX(7px); }
+  60%{ transform: translateX(-5px); } 80%{ transform: translateX(4px); }
+}
+
+/* ===== 对话框 ===== */
+#dialog{
+  position:fixed; left:50%; bottom:3vh; z-index:20;
+  width:min(1080px, 93vw);
+  padding:24px 30px 22px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(20,18,28,.88), rgba(8,7,13,.94));
+  border:2px solid rgba(201,162,39,.5);
+  border-radius:6px;
+  backdrop-filter: blur(4px);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,.85) inset,
+    0 0 60px rgba(0,0,0,.9),
+    0 0 26px rgba(201,162,39,.10);
+  transition: opacity .45s ease, transform .55s cubic-bezier(.22,1,.36,1);
+  cursor:pointer;
+}
+#dialog.hide{ opacity:0; transform: translate(-50%, 70px); pointer-events:none; }
+#dialog::before, #dialog::after{
+  content:""; position:absolute; width:16px; height:16px;
+  border:1px solid rgba(201,162,39,.75);
+}
+#dialog::before{ left:-2px; top:-2px; border-right:none; border-bottom:none; }
+#dialog::after{ right:-2px; bottom:-2px; border-left:none; border-top:none; }
+
+#speaker{
+  position:absolute; top:-15px; left:26px;
+  padding:4px 18px; font-size:14px; letter-spacing:4px;
+  color:#e8d9a0; background:#0b0a10;
+  border:1px solid rgba(201,162,39,.6); border-radius:2px;
+  box-shadow:0 0 18px rgba(0,0,0,.9);
+}
+#text{
+  min-height:86px; font-size:17.5px; line-height:1.95;
+  letter-spacing:.4px; color:#e8e3d5;
+  text-shadow:0 0 14px rgba(0,0,0,.95);
+  padding-top:4px;
+  white-space:pre-wrap;
+}
+#text::after{
+  content:""; display:inline-block; width:8px; height:17px;
+  background:rgba(201,162,39,.85); margin-left:4px;
+  vertical-align:-2px; animation: caret 1s steps(1) infinite;
+}
+@keyframes caret{ 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
+
+/* ===== AI 吐槽条 ===== */
+#aiToast{
+  position:absolute; left:50%; bottom:calc(3vh + 230px);
+  transform:translateX(-50%);
+  max-width:min(720px, 88vw);
+  padding:12px 22px;
+  font-size:14.5px; line-height:1.7; letter-spacing:.5px;
+  color:#f0d5b0; text-align:center;
+  background:rgba(36,18,14,.92);
+  border-left:3px solid #c93a3a;
+  border-radius:4px;
+  box-shadow:0 0 30px rgba(180,50,50,.45);
+  backdrop-filter:blur(6px);
+  opacity:0; pointer-events:none;
+  transition:opacity .35s ease, transform .35s ease;
+  z-index:40;
+  font-style:italic;
+}
+#aiToast.show{ opacity:1; transform:translateX(-50%) translateY(-6px); }
+
+/* ===== 选项 ===== */
+#options{ display:flex; gap:12px; margin-top:16px; flex-wrap:wrap; }
+.opt{
+  flex:1 1 250px; min-height:54px; padding:12px 16px;
+  font-family:inherit; font-size:15.5px; line-height:1.5;
+  color:#d9d2bf; text-align:left; cursor:pointer;
+  border:1px solid rgba(201,162,39,.35);
+  border-radius:4px;
+  background:linear-gradient(180deg, rgba(38,34,52,.92), rgba(15,13,22,.94));
+  box-shadow:0 4px 18px rgba(0,0,0,.7);
+  opacity:0; transform: translateY(12px);
+  transition: opacity .4s ease, transform .35s cubic-bezier(.22,1,.36,1),
+              background .3s ease, border-color .3s ease, box-shadow .3s ease;
+}
+.opt.in{ opacity:1; transform:translateY(0); }
+.opt:hover:not(:disabled){
+  transform: translateY(-3px);
+  border-color: rgba(201,162,39,.95);
+  box-shadow:0 0 24px rgba(201,162,39,.3), 0 6px 22px rgba(0,0,0,.8);
+  color:#fff4d0;
+}
+.opt:disabled{ cursor:default; }
+.opt .k{
+  display:inline-block; width:25px; height:25px; line-height:23px;
+  text-align:center; font-size:13px; margin-right:11px;
+  color:#e8d9a0; border:1px solid rgba(201,162,39,.6); border-radius:3px;
+  background:rgba(0,0,0,.45); vertical-align:middle;
+}
+.opt .t{ vertical-align:middle; }
+.opt.correct{
+  background:linear-gradient(180deg,#1f6b3a,#0d3a1f);
+  border-color:#4ade80; color:#dcfce7;
+  box-shadow:0 0 28px rgba(74,222,128,.55);
+  animation: pop .4s ease;
+}
+.opt.correct .k{ border-color:#4ade80; color:#dcfce7; }
+.opt.wrong{
+  background:linear-gradient(180deg,#6b1f1f,#3a0d0d);
+  border-color:#f87171; color:#fee2e2;
+  box-shadow:0 0 28px rgba(248,113,113,.55);
+  animation: shake .42s ease;
+}
+.opt.wrong .k{ border-color:#f87171; color:#fee2e2; }
+@keyframes pop{ 0%{transform:scale(1);} 45%{transform:scale(1.045);} 100%{transform:scale(1);} }
+@keyframes shake{
+  0%,100%{ transform:translateX(0); }
+  20%{ transform:translateX(-7px); } 40%{ transform:translateX(6px); }
+  60%{ transform:translateX(-4px); } 80%{ transform:translateX(3px); }
+}
+
+/* ===== 红光 ===== */
+#flash{
+  position:fixed; inset:0; z-index:30; pointer-events:none; opacity:0;
+  box-shadow: inset 0 0 130px 44px rgba(220,38,38,.85);
+  background: radial-gradient(ellipse at center, transparent 42%, rgba(220,38,38,.35) 100%);
+}
+#flash.on{ animation: redflash .62s ease-out; }
+@keyframes redflash{
+  0%{ opacity:0; } 16%{ opacity:1; } 42%{ opacity:.35; } 68%{ opacity:.85; } 100%{ opacity:0; }
+}
+
+/* ===== 层标题 ===== */
+#floorTitle{
+  position:fixed; left:50%; top:42%; z-index:26;
+  transform: translate(-50%,-50%) scale(.92);
+  font-size: clamp(22px, 3.6vw, 44px);
+  letter-spacing:10px; white-space:nowrap;
+  color:#e8d9a0; opacity:0; pointer-events:none;
+  text-shadow:0 0 34px rgba(201,162,39,.65), 0 0 70px rgba(0,0,0,.95);
+  transition: opacity .65s ease, transform .9s cubic-bezier(.22,1,.36,1);
+}
+#floorTitle.show{ opacity:1; transform: translate(-50%,-50%) scale(1); }
+
+/* ===== 开始 / 结束 ===== */
+.screen{
+  position:fixed; inset:0; z-index:50;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:22px; text-align:center; padding:24px;
+  background: radial-gradient(ellipse at 50% 45%, rgba(10,12,22,.86), rgba(2,3,6,.97));
+  transition: opacity .8s ease, visibility .8s;
+}
+.screen.hide{ opacity:0; visibility:hidden; pointer-events:none; }
+.screen h1{
+  margin:0; font-size: clamp(32px, 6vw, 64px);
+  letter-spacing:14px; color:#e8d9a0; font-weight:500;
+  text-shadow:0 0 40px rgba(201,162,39,.55), 0 0 90px rgba(0,0,0,.9);
+  animation: titleGlow 4.5s ease-in-out infinite alternate;
+}
+@keyframes titleGlow{
+  0%{ text-shadow:0 0 30px rgba(201,162,39,.35), 0 0 80px rgba(0,0,0,.9); }
+  100%{ text-shadow:0 0 55px rgba(201,162,39,.75), 0 0 110px rgba(0,0,0,.9); }
+}
+.screen p{
+  margin:0; font-size:15px; letter-spacing:2px; color:#9c9584; max-width:680px; line-height:2.1;
+}
+.screen button{
+  margin-top:8px; padding:14px 42px; cursor:pointer;
+  font-family:inherit; font-size:16px; letter-spacing:4px; color:#e8d9a0;
+  background:linear-gradient(180deg, rgba(40,34,24,.9), rgba(14,12,10,.95));
+  border:1px solid rgba(201,162,39,.7); border-radius:3px;
+  transition: all .3s ease;
+  box-shadow:0 0 26px rgba(0,0,0,.9);
+}
+.screen button:hover{
+  color:#fff6d5; border-color:#e8d9a0;
+  box-shadow:0 0 36px rgba(201,162,39,.45);
+  transform: translateY(-2px);
+}
+
+@media (max-width: 780px){
+  #npc{ height:58vh; opacity:.85; }
+  #npcImg{ height:58vh; }
+  #text{ font-size:15.5px; min-height:74px; }
+  #hpBar{ width:150px; }
+  .opt{ flex:1 1 100%; font-size:14.5px; }
+  #dialog{ padding:20px 18px 18px; bottom:2vh; }
+  #speaker{ left:16px; }
+  #sceneName{ font-size:12px; padding:6px 14px; letter-spacing:2px; }
+  #aiToast{ bottom:calc(2vh + 210px); font-size:13px; }
+}
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <img id="bgA" class="bg-layer-item" src="" alt="">
+  <img id="bgB" class="bg-layer-item" src="" alt="">
+  <div id="fog"></div>
+  <div id="vignette"></div>
+</div>
+
+<div id="sceneName">禁忌图书馆 · 第 1 层</div>
+
+<div id="hud">
+  <div class="hud-label">生命 · <span id="hpText">100</span></div>
+  <div id="hpBar"><div id="hpFill"></div></div>
+  <div class="hud-label" id="floorLabel">谜题 1 / 3</div>
+</div>
+
+<div id="npc">
+  <div id="npcInner">
+    <img id="npcImg" src="npc.png" alt="NPC" onerror="this.style.display='none'">
+  </div>
+</div>
+
+<div id="floorTitle"></div>
+
+<div id="dialog" class="hide">
+  <div id="speaker">守夜人</div>
+  <div id="text"></div>
+  <div id="options"></div>
+</div>
+
+<div id="aiToast"></div>
+
+<div id="flash"></div>
+
+<div class="screen" id="startScreen">
+  <h1>禁 忌 图 书 馆</h1>
+  <p>
+    抄写员阿墨在整理第七层古籍时失踪了。<br>
+    你循着油灯的微光走进这座不该存在的图书馆。<br>
+    守夜人挡在楼梯口，声音沙哑：<br>
+    「想往下走？先答对我的三个问题。每答错一次，油灯就暗一分——<br>
+    灯灭的时候，你也出不去了。」
+  </p>
+  <button id="startBtn">点亮油灯 · 进入第一层</button>
+</div>
+
+<div class="screen hide" id="overScreen">
+  <h1>灯 火 熄 灭</h1>
+  <p>你的呼吸停在了这一层。<br>书架重新合拢，把名字也一并收了回去。<br>阿墨还在更深的地方等你。</p>
+  <button id="restartBtn">重新点燃油灯</button>
+</div>
+
+<script>
+/* =========================================================
+   0. 工具
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const randInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+
+function shuffle(arr){
+  for(let i = arr.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+
+/* =========================================================
+   1. 元素
+   ========================================================= */
+const scene       = $('#scene');
+const bgA         = $('#bgA');
+const bgB         = $('#bgB');
+const fog         = $('#fog');
+const npc         = $('#npc');
+const npcInner    = $('#npcInner');
+const dialog      = $('#dialog');
+const textEl      = $('#text');
+const optionsEl   = $('#options');
+const flash       = $('#flash');
+const floorTitle  = $('#floorTitle');
+const floorLabel  = $('#floorLabel');
+const hpFill      = $('#hpFill');
+const hpText      = $('#hpText');
+const startScreen = $('#startScreen');
+const overScreen  = $('#overScreen');
+const sceneName   = $('#sceneName');
+const aiToast     = $('#aiToast');
+
+/* =========================================================
+   2. 状态
+   ========================================================= */
+const state = {
+  level: 1,
+  hp: 100,
+  maxHp: 100,
+  qIndex: 0,
+  questions: [],
+  locked: true,
+  typing: false,
+  skipTyping: false,
+  typingTimer: null,
+  toastTimer: null,
+  over: false,
+  started: false,
+  bgFront: 'A'
+};
+
+const QUESTIONS_PER_FLOOR = 3;
+const DAMAGE_PER_WRONG = 20;
+
+/* =========================================================
+   3. 楼层数据（已全部改为 .png）
+   ========================================================= */
+const FLOOR_DATA = [
+  { name: '尘封书库', bg: 'bg1.png', intro: '第一层 · 尘封书库。冷蓝色的天光从高窗漏下，照着一排排陈旧的档案夹。守夜人用油灯照了照那排歪斜的书架：「阿墨最后出现的地方，就是这里。他抄到一半，突然说有人在书里叫他。」' },
+  { name: '禁书回廊', bg: 'bg2.png', intro: '第二层 · 禁书回廊。两侧黑门紧闭，墙上画着诡异的符号，锁孔里塞着发黄的纸条。守夜人压低声音：「这些禁书，阿墨一本本抄过目录。抄到《归零》那本时，他的手开始抖。」' },
+  { name: '油灯密室', bg: 'bg3.png', intro: '第三层 · 油灯密室。一张巨大的红木书桌上，黄铜油灯还在燃烧，旁边散落着地图和锁头。守夜人把灯端起来：「这是阿墨留下的。他算过灯油还能烧多久，也算了别的——你最好也算清楚。」' },
+  { name: '钟楼暗层', bg: 'bg4.png', intro: '第四层 · 钟楼暗层。巨大的齿轮在幽暗中咬合，头顶传来一声不该有的钟响。守夜人停住脚步，抬头看了很久：「阿墨失踪那晚，钟楼敲了十三下。没有人知道第十三下是谁敲的。」' },
+  { name: '无名档案室', bg: 'bg5.png', intro: '第五层 · 无名档案室。幽蓝的灯光下，数以千计的档案柜如迷宫般排列。守夜人蹲下翻了翻：「他在找一份不存在于目录里的卷宗。你脚下这些空白页，就是他留下的线索。」' },
+  { name: '墨迹地窖', bg: 'bg6.png', intro: '第六层 · 墨迹地窖。潮湿的砖拱顶下堆满了沉重的木箱，有些已经打开。守夜人用灯照了照：「阿墨还在往下走。他每一步都留下一个算式，像是在给谁引路。」' },
+  { name: '回声阅览厅', bg: 'bg7.png', intro: '第七层 · 回声阅览厅。巨大的穹顶下，一台老式放映机在中央投射着声波。守夜人的声音第一次有些发颤：「你听，阿墨在念题。他就在前面，答完这层，我们就能找到他。」' }
+];
+
+/* =========================================================
+   4. Web Audio 音效
+   ========================================================= */
+let actx = null;
+function ensureAudio(){
+  if(!actx){
+    try{ actx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e){ console.warn('Web Audio 不可用', e); }
+  }
+  if(actx && actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function beep(o){
+  const ctx = ensureAudio();
+  if(!ctx) return;
+  const { freq = 440, type = 'sine', dur = .15, vol = .15, delay = 0, glide = null, filterType = null, filterFreq = 900 } = o;
+  const t0 = ctx.currentTime + delay;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  if(glide) osc.frequency.exponentialRampToValueAtTime(Math.max(1, glide), t0 + dur);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t0 + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  let node = osc;
+  if(filterType){
+    const f = ctx.createBiquadFilter();
+    f.type = filterType; f.frequency.value = filterFreq; f.Q.value = 1;
+    node.connect(f); node = f;
+  }
+  node.connect(gain); gain.connect(ctx.destination);
+  osc.start(t0); osc.stop(t0 + dur + 0.06);
+}
+function sfxType(){ if(!actx) return; beep({ freq: randInt(950, 1500), type: 'triangle', dur: 0.035, vol: 0.045, filterType: 'bandpass', filterFreq: 2000 }); }
+function sfxCorrect(){ beep({ freq: 880, type: 'sine', dur: 0.18, vol: 0.18 }); beep({ freq: 1320, type: 'sine', dur: 0.38, vol: 0.15, delay: 0.10 }); beep({ freq: 1760, type: 'triangle', dur: 0.30, vol: 0.07, delay: 0.10 }); }
+function sfxWrong(){ beep({ freq: 138, type: 'sawtooth', dur: 0.50, vol: 0.17, glide: 68, filterType: 'lowpass', filterFreq: 620 }); beep({ freq: 145, type: 'square', dur: 0.50, vol: 0.10, glide: 72, filterType: 'lowpass', filterFreq: 520 }); }
+function sfxTransition(){ beep({ freq: 320, type: 'sine', dur: 1.1, vol: 0.09, glide: 110 }); beep({ freq: 640, type: 'triangle', dur: 0.9, vol: 0.05, glide: 200, delay: .08 }); }
+function sfxBell(){ beep({ freq: 196, type: 'sine', dur: 2.4, vol: 0.12 }); beep({ freq: 392, type: 'sine', dur: 1.9, vol: 0.05, delay: .03 }); beep({ freq: 587, type: 'sine', dur: 1.3, vol: 0.03, delay: .06 }); }
+
+/* =========================================================
+   5. 本地 AI 吐槽
+   ========================================================= */
+const WRONG_TAUNTS = [
+  '守夜人摇了摇头：「再想想。书页在翻动，他在看着你。」',
+  '油灯的火苗晃了一下，像是在嘲笑你的答案。',
+  '书架深处传来一声叹息——又错了。',
+  '你听见钟楼的方向传来低沉的嗡鸣，仿佛在倒数。',
+  '守夜人把灯凑近了些：「灯油不多了，别浪费在错的答案上。」',
+  '地上那串墨迹脚印忽然模糊了一瞬，像在否定你。'
+];
+function localAI(){
+  const msg = WRONG_TAUNTS[randInt(0, WRONG_TAUNTS.length - 1)];
+  console.log('[本地AI] ' + msg);
+  aiToast.textContent = '🤖 ' + msg;
+  aiToast.classList.add('show');
+  if(state.toastTimer) clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => aiToast.classList.remove('show'), 3400);
+}
+
+/* =========================================================
+   6. 真实 AI 模板 & 题库
+   ========================================================= */
+const AI_CONFIG = { enabled : false, endpoint: 'https://api.deepseek.com/chat/completions', apiKey  : '', model   : 'deepseek-chat', timeout : 9000 };
+const AI_SYSTEM_PROMPT = `你是一款中式悬疑解谜网页游戏的关卡设计师。剧情：抄写员阿墨在禁忌图书馆失踪，守夜人带你逐层深入寻找。
+请严格输出 JSON：{"questions":[{"question":"题干","options":["A","B","C"],"answer":0,"hint":"解析"}]}
+题干须呼应图书馆/书架/油灯/钟楼/墨迹等场景，三题难度递进，只有一个正确答案，answer 为下标 0/1/2。不要输出 markdown。`;
+async function callRealAI(level, difficulty){
+  if(!AI_CONFIG.enabled || !AI_CONFIG.apiKey) throw new Error('真实 AI 未启用');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_CONFIG.timeout);
+  try{
+    const resp = await fetch(AI_CONFIG.endpoint, {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + AI_CONFIG.apiKey },
+      body: JSON.stringify({
+        model: AI_CONFIG.model, temperature: 1.0, response_format: { type: 'json_object' },
+        messages: [ { role: 'system', content: AI_SYSTEM_PROMPT }, { role: 'user', content: `第 ${level} 层，难度 ${difficulty}，生成 3 道谜题。` } ]
+      })
+    });
+    if(!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    let txt = (data.choices?.[0]?.message?.content || '').split('```').join('').trim();
+    const obj = JSON.parse(txt);
+    const arr = obj.questions;
+    if(!Array.isArray(arr) || arr.length < 3) throw new Error('题目数量不足');
+    return arr.slice(0, 3).map(item => {
+      const options = (item.options || []).map(String).slice(0, 3);
+      if(options.length < 3) throw new Error('选项不足');
+      const answer = Number(item.answer);
+      if(!(answer >= 0 && answer <= 2)) throw new Error('答案下标错误');
+      return { q: String(item.question || ''), options, answer, hint: String(item.hint || '') };
+    });
+  } finally { clearTimeout(timer); }
+}
+
+const POOL_EASY = [
+  { q: '守夜人把三本禁书摊在桌上：「《墨影》《回声》《归零》。已知《墨影》比《回声》厚，《归零》比《回声》薄。哪一本最厚？」', options: ['《墨影》', '《回声》', '《归零》'], answer: 0, hint: '《墨影》最厚。' },
+  { q: '油灯下的座钟指向 3 点 20 分。守夜人说：「这钟在 50 分钟后响过一次。」钟声响起时是几点？', options: ['4 点 10 分', '4 点 00 分', '3 点 70 分'], answer: 0, hint: '3:20 + 50 = 4:10。' },
+  { q: '同时点燃 4 支一模一样的蜡烛，每支烧尽需 60 分钟。全部烧完需要多久？', options: ['60 分钟', '15 分钟', '240 分钟'], answer: 0, hint: '同时燃烧互不影响。' }
+];
+const POOL_MID = [
+  { q: '8 个一模一样的书架，其中 1 个装了机关，比其他的轻。用无砝码天平，最少称几次一定能找出它？', options: ['2 次', '3 次', '4 次'], answer: 0, hint: '3 对 3，再称 1 次。' },
+  { q: '三个人守在门前。甲说：「乙在说谎。」乙说：「丙在说谎。」丙说：「甲和乙都在说谎。」只有一人说真话，是谁？', options: ['乙', '甲', '丙'], answer: 0, hint: '假设乙真，自洽。' },
+  { q: '三个开关控制三盏油灯。你只能进密室一次。怎样判断对应关系？', options: ['开一个等一会儿关掉，开第二个进去靠温度判断', '全打开看哪盏最亮', '随便开一个试'], answer: 0, hint: '利用余温判断。' }
+];
+const POOL_HARD = [
+  { q: '12 枚外形相同的铜币，其中 1 枚重量不同（不知轻重）。用无砝码天平，最少称几次一定能找出它？', options: ['3 次', '4 次', '2 次'], answer: 0, hint: '12 枚不知轻重需 3 次。' },
+  { q: '两根粗细不均的蜡烛，每根烧完都是 60 分钟。不用钟表，如何量出 45 分钟？', options: ['第一根两头同点，第二根只点一头；第一根烧完时点燃第二根另一头', '两根都两头点', '先点一根烧到一半再点第二根'], answer: 0, hint: '30 + 15 = 45。' },
+  { q: '四位数密码：它是 4 的倍数，各位数字之和是 9，十位数字比个位大 2。可能是？', options: ['1260', '1350', '1440'], answer: 0, hint: '1260 满足全部。' }
+];
+
+function genSeries(level){
+  const a = randInt(2, 8) + level * 2;
+  const d = randInt(3, 6) + level;
+  const seq = [a, a + d, a + 2 * d, a + 3 * d];
+  const ans = a + 4 * d;
+  const set = new Set([ans]);
+  [ans - d, ans + d].forEach(w => set.add(w));
+  const arr = shuffle([...set]);
+  return { q: `铜牌刻着：${seq.join('、')}、？。下一块是什么？`, options: arr.map(String), answer: arr.indexOf(ans), hint: `公差 ${d}，答案为 ${ans}。` };
+}
+
+function buildLocalQuestions(level){
+  const easy = shuffle(clone(POOL_EASY));
+  const mid  = shuffle(clone(POOL_MID));
+  const hard = shuffle(clone(POOL_HARD));
+  const k = (level - 1) % 6;
+  const list = [ easy[k % easy.length], mid[k % mid.length], hard[k % hard.length] ];
+  if(level % 2 === 0) list[1] = genSeries(level);
+  return list;
+}
+
+async function fetchQuestions(level){
+  const difficulty = Math.min(3, Math.ceil(level / 2));
+  if(AI_CONFIG.enabled && AI_CONFIG.apiKey){
+    dialog.classList.remove('hide');
+    textEl.textContent = '（守夜人翻动着阿墨留下的笔记……）';
+    try{
+      const aiQs = await callRealAI(level, difficulty);
+      if(aiQs && aiQs.length >= 3) return aiQs.slice(0, 3);
+    }catch(e){ console.warn('[AI 不可用，回退本地题库]', e.message); }
+  }
+  return buildLocalQuestions(level);
+}
+
+/* =========================================================
+   7. 打字机 & 渲染
+   ========================================================= */
+function stopTyping(){
+  state.typing = false;
+  state.skipTyping = true;
+  clearTimeout(state.typingTimer);
+}
+function typeText(str){
+  return new Promise(resolve => {
+    textEl.textContent = '';
+    state.typing = true;
+    state.skipTyping = false;
+    let i = 0;
+    const tick = () => {
+      if(!state.typing){ resolve(); return; }
+      if(state.skipTyping){ textEl.textContent = str; state.typing = false; resolve(); return; }
+      if(i >= str.length){ state.typing = false; resolve(); return; }
+      textEl.textContent += str[i];
+      i++;
+      if(i % 3 === 0) sfxType();
+      state.typingTimer = setTimeout(tick, 36);
+    };
+    tick();
+  });
+}
+
+const KEY_LABELS = ['A', 'B', 'C'];
+function renderOptions(q){
+  optionsEl.innerHTML = '';
+  q.options.forEach((optText, idx) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'opt';
+    const k = document.createElement('span');
+    k.className = 'k'; k.textContent = KEY_LABELS[idx];
+    const t = document.createElement('span');
+    t.className = 't'; t.textContent = optText;
+    btn.appendChild(k); btn.appendChild(t);
+    btn.addEventListener('click', e => { e.stopPropagation(); onAnswer(idx, btn); });
+    optionsEl.appendChild(btn);
+    setTimeout(() => btn.classList.add('in'), 80 + idx * 90);
+  });
+}
+
+/* =========================================================
+   8. 背景切换（使用 img 标签加载）
+   ========================================================= */
+async function switchBgForLevel(level){
+  const data = FLOOR_DATA[(level - 1) % FLOOR_DATA.length];
+  const targetUrl = data.bg;
+
+  const frontEl = state.bgFront === 'A' ? bgA : bgB;
+  const backEl  = state.bgFront === 'A' ? bgB : bgA;
+
+  return new Promise((resolve) => {
+    backEl.onload = () => {
+      const brightness = Math.max(.35, .65 - level * .02);
+      const saturate   = Math.max(.6, .90 - level * .02);
+      backEl.style.filter = `brightness(${brightness}) saturate(${saturate}) contrast(1.05)`;
+      
+      backEl.classList.add('active');
+      frontEl.classList.remove('active');
+      state.bgFront = state.bgFront === 'A' ? 'B' : 'A';
+
+      fog.style.opacity = (0.16 + Math.min(0.12, level * 0.012)).toFixed(2);
+      resolve();
+    };
+
+    backEl.onerror = () => {
+      console.error(`[图片加载失败] 找不到图片: ${targetUrl}`);
+      alert(`⚠️ 图片加载失败！\n\n请在文件夹里检查是否有名为 ${targetUrl} 的图片。\n\n【常见原因】\n1. 你的电脑隐藏了文件后缀，图片实际名字变成了 ${targetUrl}.png\n2. 文件夹里的图片名字拼写错了。`);
+      
+      backEl.classList.add('active');
+      frontEl.classList.remove('active');
+      state.bgFront = state.bgFront === 'A' ? 'B' : 'A';
+      resolve();
+    };
+
+    backEl.src = targetUrl;
+  });
+}
+
+/* =========================================================
+   9. 答题逻辑
+   ========================================================= */
+async function askQuestion(index){
+  if(state.over) return;
+  state.qIndex = index;
+  state.locked = true;
+  optionsEl.innerHTML = '';
+  dialog.classList.remove('hide');
+  floorLabel.textContent = `谜题 ${index + 1} / ${QUESTIONS_PER_FLOOR}`;
+
+  const q = state.questions[index];
+  if(index === 0){
+    const floorInfo = FLOOR_DATA[(state.level - 1) % FLOOR_DATA.length];
+    await typeText(floorInfo.intro + '\n\n' + q.q);
+  }else{
+    await typeText(q.q);
+  }
+  if(state.over) return;
+  renderOptions(q);
+  setTimeout(() => { state.locked = false; }, 350);
+}
+
+async function onAnswer(idx, btn){
+  if(state.locked || state.over) return;
+  state.locked = true;
+
+  const q = state.questions[state.qIndex];
+  const isCorrect = idx === q.answer;
+  const buttons = [...optionsEl.querySelectorAll('.opt')];
+  buttons.forEach(b => { b.disabled = true; });
+
+  if(isCorrect){
+    btn.classList.add('correct');
+    sfxCorrect();
+    npcInner.classList.add('happy');
+    setTimeout(() => npcInner.classList.remove('happy'), 500);
+  }else{
+    btn.classList.add('wrong');
+    if(buttons[q.answer]) buttons[q.answer].classList.add('correct');
+    sfxWrong();
+    triggerRedFlash();
+    damage(DAMAGE_PER_WRONG);
+    localAI();
+    npcInner.classList.add('shake');
+    setTimeout(() => npcInner.classList.remove('shake'), 500);
+  }
+
+  if(state.over) return;
+  await wait(1500);
+  if(state.over) return;
+
+  const next = state.qIndex + 1;
+  if(next >= state.questions.length){
+    await nextFloor();
+  }else{
+    await askQuestion(next);
+  }
+}
+
+function triggerRedFlash(){
+  flash.classList.remove('on');
+  void flash.offsetWidth;
+  flash.classList.add('on');
+}
+function damage(n){
+  state.hp = Math.max(0, state.hp - n);
+  hpFill.style.width = (state.hp / state.maxHp * 100) + '%';
+  hpText.textContent = state.hp;
+  if(state.hp <= 0) gameOver();
+}
+function gameOver(){
+  if(state.over) return;
+  state.over = true;
+  state.locked = true;
+  stopTyping();
+  dialog.classList.add('hide');
+  aiToast.classList.remove('show');
+  setTimeout(() => overScreen.classList.remove('hide'), 450);
+}
+
+/* =========================================================
+   10. 楼层转场
+   ========================================================= */
+async function showFloorTitle(text){
+  floorTitle.textContent = text;
+  floorTitle.classList.add('show');
+  await wait(1100);
+  floorTitle.classList.remove('show');
+  await wait(380);
+}
+
+async function enterFloor(level, animate){
+  state.level = level;
+  state.qIndex = 0;
+  state.questions = [];
+  state.locked = true;
+
+  const data = FLOOR_DATA[(level - 1) % FLOOR_DATA.length];
+  floorLabel.textContent = `谜题 1 / ${QUESTIONS_PER_FLOOR}`;
+  sceneName.textContent = `禁忌图书馆 · 第 ${level} 层 · ${data.name}`;
+
+  if(animate){
+    scene.classList.add('out');
+    sfxTransition();
+    await wait(800);
+  }
+
+  await switchBgForLevel(level);
+
+  npc.classList.remove('enter');
+  void npc.offsetWidth;
+  npc.classList.add('enter');
+  scene.classList.remove('out');
+  await wait(animate ? 620 : 320);
+  if(state.over) return;
+
+  await showFloorTitle(`第 ${level} 层 · ${data.name}`);
+  if(state.over) return;
+
+  state.questions = await fetchQuestions(level);
+  if(state.over) return;
+  askQuestion(0);
+}
+
+async function nextFloor(){
+  state.locked = true;
+  dialog.classList.remove('hide');
+  textEl.textContent = '';
+  await typeText(`第 ${state.level} 层已破解！正在前往下一层……`);
+  await wait(2000);
+  dialog.classList.add('hide');
+  await wait(420);
+  await enterFloor(state.level + 1, true);
+}
+
+/* =========================================================
+   11. 启动
+   ========================================================= */
+async function startGame(){
+  if(state.started) return;
+  state.started = true;
+  ensureAudio();
+  sfxBell();
+  startScreen.classList.add('hide');
+  await wait(500);
+  await enterFloor(1, false);
+}
+
+function restartGame(){
+  stopTyping();
+  if(state.toastTimer) clearTimeout(state.toastTimer);
+  aiToast.classList.remove('show');
+
+  state.over = false;
+  state.started = false;
+  state.hp = state.maxHp;
+  state.level = 1;
+  state.qIndex = 0;
+  state.questions = [];
+  state.locked = true;
+  state.bgFront = 'A';
+
+  hpFill.style.width = '100%';
+  hpText.textContent = state.maxHp;
+  optionsEl.innerHTML = '';
+  textEl.textContent = '';
+
+  overScreen.classList.add('hide');
+  dialog.classList.add('hide');
+
+  bgA.classList.remove('active');
+  bgB.classList.remove('active');
+
+  startGame();
+}
+
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('restartBtn').addEventListener('click', restartGame);
+
+dialog.addEventListener('click', () => {
+  if(state.typing) state.skipTyping = true;
+});
+
+window.addEventListener('keydown', e => {
+  if(state.locked || state.over || state.typing) return;
+  const map = { a: 0, b: 1, c: 2 };
+  const i = map[e.key.toLowerCase()];
+  if(i === undefined) return;
+  const btn = optionsEl.querySelectorAll('.opt')[i];
+  if(btn && !btn.disabled) btn.click();
+});
+</script>
+</body>
+</html>
